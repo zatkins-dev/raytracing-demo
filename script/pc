@@ -1,0 +1,15 @@
+set term pngcairo font "Arial,12" size 1024,768
+
+set hidden3d offset 0
+set output 'lab12.png'
+set xyplane 0
+
+set view 20, 120
+
+splot 'data/CylA.plt' w l title 'CylA', \
+    'data/CylB.plt' w l title 'CylB', \
+    'data/hit.plt' w l lw 4 title 'Hit Cells', \
+    'data/source.plt' w l lw 4 title 'Source', \
+    'data/blockers.plt' w l lw 4 title 'Blocking Cells', \
+    'data/blockers_points.plt' w lp title 'Blocking Points', \
+    'data/hit_points.plt' w lp title 'Hit Points',

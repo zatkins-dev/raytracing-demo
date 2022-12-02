@@ -1,0 +1,13 @@
+#
+# Remember, on Summit:
+#
+# module load intel
+# module load impi
+
+rm -rf *.plt
+rm -rf *.png
+
+./bin/raytracing -nCellh_o 7 -nCellc_o 19 -nCellh_i 7 -nCellc_i 19 -r_o 10. -r_i 5. -h_o 5. -h_i 2. -source 3
+
+gnuplot script/pc
+gnuplot script/pc_cyl

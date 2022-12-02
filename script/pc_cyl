@@ -1,0 +1,10 @@
+set term pngcairo font "Arial,12"
+
+set hidden3d offset 0
+set output 'lab12_cylinders.png'
+set xyplane 0
+
+set view 20, 120
+
+splot 'data/CylA.plt' w l title 'CylA', \
+    'data/CylB.plt' w l title 'CylB',
