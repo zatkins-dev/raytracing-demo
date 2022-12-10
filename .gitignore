@@ -1,0 +1,6 @@
+animation/**
+bin/**
+data/**
+report/**
+*.png
+.vscode
