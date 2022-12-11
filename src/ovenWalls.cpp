@@ -84,29 +84,34 @@ int main(int argc, char *argv[]) {
 
   // CPU Test
   {
-    timingInfo cpu;
-    cpu.start();
-    // Set up parameters for ray tracing
-    auto intersections = array2d<int>(CylA.nFaces, CylA.nFaces);
-
     plotFace(CylA, "data/source", source_face_id);
 
-    for (int sourceFaceID = 0; sourceFaceID < CylA.nFaces; sourceFaceID++) {
-      // (1) Point on source face
-      const Point3 sourceCenter = CylA.centers[source_face_id];
+    // Output array for intersection results
+    auto intersections = array2d<int>(CylA.nFaces, CylA.nFaces);
+    auto points = array2d<Point3>(CylA.nFaces, CylA.nFaces);
 
+    timingInfo cpu;
+    cpu.start();
+
+#pragma omp parallel for collapse(2) shared(intersections)
+    for (int sourceFaceID = 0; sourceFaceID < CylA.nFaces; sourceFaceID++) {
       for (int targetFaceID = 0; targetFaceID < CylA.nFaces; ++targetFaceID) {
         //  (2) Ray to target
-        Ray ray{sourceCenter, CylA.centers[targetFaceID]};
+        Ray ray{CylA.centers[sourceFaceID], CylA.centers[targetFaceID]};
 
-        // (4) Find blockers of ray
-        intersections[sourceFaceID][targetFaceID] = CylB & ray;
+        const auto &[face, point] = CylB & ray;
+        intersections[sourceFaceID][targetFaceID] = face;
+        points[sourceFaceID][targetFaceID] =
+            face > 0 ? point : CylA.centers[targetFaceID];
       }
     }
 
     auto result = cpu.finish();
     cout << "CPU Test: " << result.cpu_s << " s (CPU Time), " << result.wall_s
          << " s (Wall Time)\n";
+
+    dump("data/intersections_cpu.dump", intersections, CylA.nFaces,
+         CylA.nFaces);
 
     VI facesHit;
     VI facesBlocking;
@@ -123,28 +128,29 @@ int main(int argc, char *argv[]) {
 
   // GPU Test
   {
+    // Output array for intersection results
+    auto intersections = array2d<int>(CylA.nFaces, CylA.nFaces);
+    auto points = array2d<Point3>(CylA.nFaces, CylA.nFaces);
+
     timingInfo gpu;
     gpu.start();
 
-    // Set up parameters for ray tracing
-    auto intersections = array2d<int>(CylA.nFaces, CylA.nFaces);
-
-    plotFace(CylA, "data/source", source_face_id);
-
-    // (1) Point on source face
-    const Point3 sourceCenter = CylA.centers[source_face_id];
 #pragma acc data pcopyin(CylA), pcopyin(CylB),                                 \
     pcopyout(intersections [0:CylA.nFaces] [0:CylA.nFaces]),                   \
-    pcopyin(sourceCenter)
+    pcopyout(points [0:CylA.nFaces] [0:CylA.nFaces]),
     {
-#pragma acc parallel loop collapse(2)
+#pragma acc parallel loop independent gang
       for (int sourceFaceID = 0; sourceFaceID < CylA.nFaces; sourceFaceID++) {
+#pragma acc loop independent vector
         for (int targetFaceID = 0; targetFaceID < CylA.nFaces; ++targetFaceID) {
           //  (2) Ray to target
           Ray ray{CylA.centers[sourceFaceID], CylA.centers[targetFaceID]};
 
           // (4) Find blockers of ray
-          intersections[sourceFaceID][targetFaceID] = CylB & ray;
+          auto [face, point] = CylB & ray;
+          intersections[sourceFaceID][targetFaceID] = face;
+          points[sourceFaceID][targetFaceID] =
+              face > 0 ? point : CylA.centers[targetFaceID];
         }
       }
     }
@@ -153,17 +159,38 @@ int main(int argc, char *argv[]) {
     cout << "GPU Test: " << result.cpu_s << " s (CPU Time), " << result.wall_s
          << " s (Wall Time)\n";
 
-    VI facesHit;
-    VI facesBlocking;
-    for (int i = 0; i < CylA.nFaces; i++) {
-      if (intersections[source_face_id][i] < 0)
-        facesHit.push_back(i);
-      else
-        facesBlocking.push_back(intersections[source_face_id][i]);
-    }
+    dump("data/intersections_gpu.dump", intersections, CylA.nFaces,
+         CylA.nFaces);
 
-    plotFacesInList(CylA, "data/hit", facesHit);
-    plotFacesInList(CylB, "data/blockers", facesBlocking);
+    {
+      for (int i = 0; i < CylA.nFaces; i++) {
+        VI facesHit, facesBlocking;
+        for (int j = 0; j < CylA.nFaces; j++) {
+          if (intersections[i][j] < 0)
+            facesHit.push_back(j);
+          else
+            facesBlocking.push_back(intersections[i][j]);
+        }
+
+        char src_face_str[6];
+        sprintf(src_face_str, "%06d", i);
+        const string src_face{src_face_str};
+        plotFacesInList(CylA, "data/hit_" + src_face, facesHit);
+        plotFacesInList(CylB, "data/blockers_" + src_face, facesBlocking);
+        plotFace(CylA, "data/source_" + src_face, i);
+
+        std::ofstream hit("data/rays_hit_" + src_face + ".plt");
+        std::ofstream blocked("data/rays_blocked_" + src_face + ".plt");
+        for (int j = 0; j < CylA.nFaces; j++) {
+          if (i == j)
+            continue;
+          if (intersections[i][j] < 0)
+            hit << CylA.centers[i] << '\n' << points[i][j] << "\n\n\n\n";
+          else
+            blocked << CylA.centers[i] << '\n' << points[i][j] << "\n\n\n\n";
+        }
+      }
+    }
   }
 
   // {

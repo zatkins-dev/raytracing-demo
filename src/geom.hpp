@@ -83,9 +83,13 @@ constexpr double dot(const Vec3 &v, const Vec3 &w) {
   return v.x * w.x + v.y * w.y + v.z * w.z;
 }
 
-constexpr double normsq(const Vec3 &v) { return dot(v, v); }
+constexpr double normsq(const Vec3 &v) {
+  return v.x * v.x + v.y * v.y + v.z * v.z;
+}
 
-constexpr Vec3 normalized(const Vec3 &v) { return (1. / sqrt(normsq(v))) * v; }
+constexpr double norm(const Vec3 &v) { return std::sqrt(normsq(v)); }
+
+constexpr Vec3 normalized(const Vec3 &v) { return (1. / norm(v)) * v; }
 
 class Face {
 public:
@@ -116,9 +120,8 @@ public:
   constexpr Ray(Point3 p_, Vec3 n_) : p(p_), n(normalized(n_)) {}
 
   constexpr Ray(Point3 p1, Point3 p2) {
-
     p = p1;
-    n = normalized(p2 - p1);
+    n = p2 - p1;
   }
 };
 
@@ -138,25 +141,49 @@ public:
  * @param C
  * @return true if dot(vAB x vAP, vCA x vAP) > 0
  **/
+#pragma acc routine seq
 constexpr bool insideCorner(const Point3 &P, const Point3 &C, const Point3 &A,
                             const Point3 &B) noexcept {
   return dot(cross(B - A, P - A), cross(A - C, P - A)) >= 0;
 }
 
+#pragma acc routine seq
+constexpr bool onEdge(const Point3 &P, const Point3 &A, const Point3 &B) {
+  return std::abs(norm(P - A) + norm(B - P) - norm(A - B)) < 1e-12;
+}
+
+#pragma acc routine seq
+constexpr bool onVertex(const Point3 &P, const Face &face) {
+  return normsq(P - face.q1) < 1e-12 || normsq(P - face.q2) < 1e-12 ||
+         normsq(P - face.q3) < 1e-12 || normsq(P - face.q4) < 1e-12;
+}
+
+#pragma acc routine seq
+constexpr bool onEdge(const Point3 &P, const Face &face) {
+  return onEdge(P, face.q1, face.q2) || onEdge(P, face.q2, face.q3) ||
+         onEdge(P, face.q3, face.q4) || onEdge(P, face.q4, face.q1);
+}
+
+#pragma acc routine seq
+constexpr bool onFace(const Point3 &P, const Face &face) {
+  return insideCorner(P, face.q1, face.q4, face.q3) &&
+         insideCorner(P, face.q2, face.q1, face.q4) &&
+         insideCorner(P, face.q3, face.q2, face.q1) &&
+         insideCorner(P, face.q4, face.q3, face.q2);
+}
 //  ==
 //  ||
 //  ||  LineHitsFace: Returns 1 if the line specified by a point L0 and vector L
 //  ||                intersect a face specified by four points Q0 - Q3.
 //  ||
 //  ==
-constexpr bool operator&(const Ray &ray, const Face &face) noexcept {
+#pragma acc routine seq
+constexpr auto operator&(const Ray &ray, const Face &face) noexcept {
   const auto l_dot_n = dot(ray.n, face.n);
-  if (fabs(l_dot_n) < 1.e-10)
-    return false;
+  if (l_dot_n > 1.e-14)
+    return std::make_pair(false, Point3{});
   const auto d = dot(face.c - ray.p, face.n) / l_dot_n;
-  Point3 p = ray.p + d * ray.n;
-  return insideCorner(p, face.q1, face.q4, face.q3) &&
-         insideCorner(p, face.q2, face.q1, face.q4) &&
-         insideCorner(p, face.q3, face.q2, face.q1) &&
-         insideCorner(p, face.q4, face.q3, face.q2);
+  const Point3 p = ray.p + d * ray.n;
+  return std::make_pair(onFace(p, face), p);
+  // return onVertex(p, face) || onEdge(p, face) || onFace(p, face);
 }

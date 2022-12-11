@@ -1,52 +1,31 @@
 
-# -----------------------------------------------------
-# On local Ubuntu
-# -----------------------------------------------------
-#
-# Be sure to use MPI compiler wrappers.
-# Whenever compiling an MPI program, you should use the MPI wrappers:
-#
-#    C - mpicc
-#    C++ - mpiCC, mpicxx, mpic++
-#    FORTRAN - mpifort, mpif77, mpif90
-#
-# These wrappers do all of the dirty work for you of making sure that
-# all of the appropriate compiler flags, libraries, include directories,
-# library directories, etc. are included when you compile your program.
-
-
-# -----------------------------------------------------
-# On Summit:
-# -----------------------------------------------------
-#
-# module load intel
-# module load impi
-
-# -----------------------------------------------------
-# Set compiler based on platform
-# -----------------------------------------------------
-
-# Default compiler is Intel MPI compiler
 
 CXX      := pgc++
 EXE		 := bin/raytracing
-# CXXFLAGS := -g -O3 -std=c++17 -Minit-msg -Minfo=accel -Minline -finline-functions -Mipa=acc
-CXXFLAGS := -g -O3 -acc -std=c++23 -Minit-msg -Minfo=accel -Minline -finline-functions
-SOURCES  := $(addprefix src/,ovenWalls.cpp Cylinder.hpp geom.hpp arrayUtils.hpp)
+EXE_NOMP := bin/raytracing_nomp
+CXXFLAGS := -g -fast -mp -tp=zen3 -acc=multicore -acc=gpu -std=c++23 -Minit-msg -Minfo=accel -Minline -finline-functions -Midiom -Munroll -gpu=fastmath
+SOURCES  := $(addprefix src/,ovenWalls.cpp Cylinder.hpp geom.hpp arrayUtils.hpp ovenWalls.h)
 # -----------------------------------------------------
 # Make esPIC
 # -----------------------------------------------------
+
+.PHONY: all
+all: $(EXE) $(EXE_NOMP)
+
 
 $(EXE): src/ovenWalls.cpp $(SOURCES)
 	@mkdir -p bin
 	@mkdir -p animation
 	@mkdir -p data
-	$(CXX) $(CXXFLAGS) src/ovenWalls.cpp -o $(EXE)
+	$(CXX) $(CXXFLAGS)  src/ovenWalls.cpp -o $(EXE)
+
+$(EXE_NOMP): src/ovenWalls.cpp $(SOURCES)
+	$(CXX) $(CXXFLAGS) -Mnoopenmp src/ovenWalls.cpp -o $(EXE_NOMP)
 
 .PHONY: clean
 clean: clean-artifacts
-	rm -f $(EXE) *.o
+	rm -f $(EXE) $(EXE_NOMP) *.o
 
 .PHONY: clean-artifacts
 clean-artifacts:
-	rm -f data/* animation/*
+	rm -f data/* animation/* plot/*

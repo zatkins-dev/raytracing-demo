@@ -119,21 +119,12 @@ public:
     coord[:nField], face[:nFaces][:4], normals[:nFaces], centers[:nFaces])
   }
 
-  void updatehost() { // update host copy of data
-#pragma acc update self(coord [0:nField], face [0:nFaces] [0:4],               \
-                        normals [0:nFaces], centers [0:nFaces])
-  }
-  void updatedev() { // update device copy of data
-#pragma acc update device(coord [0:nField], face [0:nFaces] [0:4],             \
-                          normals [0:nFaces], centers [0:nFaces])
-  }
-
 #pragma acc routine seq
-  constexpr int operator&(const Ray &ray) const noexcept {
-    int intersection = -1;
-
-#pragma acc loop reduction(max : intersection)
+  constexpr auto operator&(const Ray &ray) const noexcept {
     for (int f = 0; f < nFaces; f++) {
+      if (normsq(centers[f] - ray.p) < 1e-12)
+        continue;
+
       // Vertices of potential blocker
       const Point3 c[]{
           coord[face[f][0]],
@@ -141,15 +132,14 @@ public:
           coord[face[f][2]],
           coord[face[f][3]],
       };
-      Face t_face{c, normals[f]};
+      const Face t_face{c, normals[f]};
 
-      // Look for intersection
       // ignore the source face
-      if (normsq(t_face.c - ray.p) < 1e-12)
-        continue;
-      intersection = ray & t_face ? std::max(f, intersection) : intersection;
+      const auto &[intersects, p] = ray & t_face;
+      if (intersects)
+        return std::make_pair(f, p);
     }
-    return intersection;
+    return std::make_pair(-1, Point3{});
   }
 
   int pid(int i, int j) { return (i - 1 + (j - 1) * nRealh); }

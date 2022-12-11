@@ -25,6 +25,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <omp.h>
 #include <openacc.h>
 #include <sstream>
 #include <string>
@@ -104,3 +105,13 @@ private:
            nanoseconds{ts1.tv_nsec - ts0.tv_nsec};
   }
 };
+
+inline void dump(std::string dest, int **intersections, int imax, int jmax) {
+  std::ofstream out(dest);
+  for (int i = 0; i < imax; i++) {
+    for (int j = 0; j < jmax; j++) {
+      out << intersections[i][j] << " ";
+    }
+    out << "\n";
+  }
+}

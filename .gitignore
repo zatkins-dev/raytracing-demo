@@ -1,6 +1,5 @@
-animation/**
 bin/**
 data/**
-report/**
+plot/**
 *.png
 .vscode

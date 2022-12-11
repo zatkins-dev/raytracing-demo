@@ -1,15 +1,19 @@
-set term pngcairo font "Arial,12" size 1024,768
+system("mkdir -p plot")
+n_faces = int(system("python3 script/num_faces.py"))
 
-set hidden3d offset 0
-set output 'lab12.png'
-set xyplane 0
+suf(base,i) = sprintf("data/%s_%06d.plt", base, i)
+do for [ii=0:n_faces] {
+    set term pngcairo font "Arial,12" size 1024,768
+    set output sprintf("plot/raytracing_%06d.png", ii)
+    set hidden3d offset 0
+    set xyplane 0
+    set view 20, 120
 
-set view 20, 120
-
-splot 'data/CylA.plt' w l title 'CylA', \
-    'data/CylB.plt' w l title 'CylB', \
-    'data/hit.plt' w l lw 4 title 'Hit Cells', \
-    'data/source.plt' w l lw 4 title 'Source', \
-    'data/blockers.plt' w l lw 4 title 'Blocking Cells', \
-    'data/blockers_points.plt' w lp title 'Blocking Points', \
-    'data/hit_points.plt' w lp title 'Hit Points',
+    splot 'data/CylA.plt' w l title 'CylA', \
+        'data/CylB.plt' w l title 'CylB', \
+        suf("hit", ii) w l lw 4 title 'Hit Cells', \
+        suf("source", ii) w l lw 4 title 'Source', \
+        suf("blockers", ii) w l lw 4 title 'Blocking Cells', \
+        suf("rays_blocked", ii) w lp title 'Blocking Points', \
+        suf("rays_hit", ii) w lp title 'Hit Points'
+}
