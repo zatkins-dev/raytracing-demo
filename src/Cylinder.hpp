@@ -15,13 +15,7 @@ using std::string;
 #include "geom.hpp"
 
 class Cylinder {
-  struct PointOnFace {
-    Point3 p;
-    int face_id;
-  };
-
 public:
-  using intersect_result_t = std::optional<PointOnFace>;
   int nCellh;      // Number of cells in the height direction
   int nCellc;      // Number of cells in the circular direction
   int nRealh;      // Number of nodes in the height direction
@@ -36,8 +30,6 @@ public:
   Point3 *coord;   // Vertices
   Vec3 *normals;   // Face normals
   Point3 *centers; // Face centers
-
-  Cylinder() {}
 
   Cylinder(int _nCellh, int _nCellc, double _radius, double _length,
            int Out1In2)
@@ -69,26 +61,23 @@ public:
         double zval = dz * (i - 1);
 
         coord[p] = {
-            .x = radius * std::cos(theta * M_PI / 180.),
-            .y = radius * std::sin(theta * M_PI / 180.),
-            .z = zval,
+            radius * std::cos(theta * M_PI / 180.),
+            radius * std::sin(theta * M_PI / 180.),
+            zval,
         };
 
         // Form face, i.e., for this face number (which happens to be p)
         // collect the pids of the 4 nodes that comprise this face.
 
-        int point[4];
-        point[0] = pid(i, j);
-        point[1] = pid(i + 1, j);
-        point[2] = pid(i + 1, j % nRealc + 1);
-        point[3] = pid(i, j % nRealc + 1);
+        const int point[4]{
+            pid(i, j),
+            pid(i + 1, j),
+            j == nRealc ? pid(i + 1, 1) : pid(i + 1, j % nRealc + 1),
+            j == nRealc ? pid(i, 1) : pid(i, j % nRealc + 1),
+        };
 
-        // Correct point for when we have wrapped completely around the circle
-
-        if (j == nRealc) {
-          point[2] = pid(i + 1, 1);
-          point[3] = pid(i, 1);
-        }
+        // Correct point for when we have wrapped completely around the
+        // circle
 
         // Store the point values in this face, p (but not for the last point in
         // an i-row
@@ -115,9 +104,9 @@ public:
       double mag = sqrt(avg.x * avg.x + avg.y * avg.y);
 
       normals[f] = {
-          .x = avg.x / mag,
-          .y = avg.y / mag,
-          .z = 0.,
+          avg.x / mag,
+          avg.y / mag,
+          0.,
       };
 
       centers[f] = avg;
@@ -125,120 +114,118 @@ public:
       if (Out1In2 == 2)
         normals[f] *= -1.;
     }
+#pragma acc enter data copyin(this[:1])
+#pragma acc enter data copyin(                                                 \
+    coord[:nField], face[:nFaces][:4], normals[:nFaces], centers[:nFaces])
   }
 
-  constexpr intersect_result_t operator&(const Ray &ray) const {
-    int blockerFaceID = 0;
-    bool blocked = false;
-    double min_dist = INFINITY;
-    Point3 closest_point{};
-    int closest_face = -1;
+  void updatehost() { // update host copy of data
+#pragma acc update self(coord [0:nField], face [0:nFaces] [0:4],               \
+                        normals [0:nFaces], centers [0:nFaces])
+  }
+  void updatedev() { // update device copy of data
+#pragma acc update device(coord [0:nField], face [0:nFaces] [0:4],             \
+                          normals [0:nFaces], centers [0:nFaces])
+  }
 
+#pragma acc routine seq
+  constexpr int operator&(const Ray &ray) const noexcept {
+    int intersection = -1;
+
+#pragma acc loop reduction(max : intersection)
     for (int f = 0; f < nFaces; f++) {
       // Vertices of potential blocker
-      Face t_face{
-          {
-              coord[face[f][0]],
-              coord[face[f][1]],
-              coord[face[f][2]],
-              coord[face[f][3]],
-          },
-          normals[f],
+      const Point3 c[]{
+          coord[face[f][0]],
+          coord[face[f][1]],
+          coord[face[f][2]],
+          coord[face[f][3]],
       };
+      Face t_face{c, normals[f]};
 
       // Look for intersection
       // ignore the source face
       if (normsq(t_face.c - ray.p) < 1e-12)
         continue;
-      auto intersection = ray & t_face;
-      if (intersection) {
-        double dist = normsq(*intersection - ray.p);
-        if (dist < min_dist) {
-          min_dist = dist;
-          closest_face = f;
-          closest_point = *intersection;
-        }
-      }
+      intersection = ray & t_face ? std::max(f, intersection) : intersection;
     }
-    if (closest_face > 0)
-      return PointOnFace{closest_point, closest_face};
-    else
-      return std::nullopt;
+    return intersection;
   }
 
   int pid(int i, int j) { return (i - 1 + (j - 1) * nRealh); }
+};
 
-  void plot(string descriptor) {
-    // Open plot file
-    std::ofstream file(descriptor + ".plt");
+void plot(const Cylinder &c, string descriptor) {
+  // Open plot file
+  std::ofstream file(descriptor + ".plt");
 
-    // Write to plot file
-    for (int f = 0; f < nFaces; ++f) {
-      const std::array<int, 5> pts{
-          face[f][0], face[f][1], face[f][2], face[f][3], face[f][0],
-      };
-
-      for (auto &p : pts)
-        file << coord[p] << endl;
-
-      file << "\n\n\n";
-    }
-
-    std::ofstream file1(descriptor + "_centers.plt");
-
-    // Write to plot file
-    for (int f = 0; f < nFaces; ++f) {
-      file1 << centers[f] << endl;
-    }
-  }
-
-  void plotFacesInList(string descriptor, std::vector<int> &facesToPlot) {
-    // Open plot file
-    std::ofstream file(descriptor + ".plt");
-
-    // Write to plot file
-    for (int i = 0; i < facesToPlot.size(); ++i) {
-      const std::array<int, 5> pts{
-          face[facesToPlot[i]][0], face[facesToPlot[i]][1],
-          face[facesToPlot[i]][2], face[facesToPlot[i]][3],
-          face[facesToPlot[i]][0],
-      };
-
-      for (auto &p : pts)
-        file << coord[p] << endl;
-
-      file << "\n\n\n";
-    }
-  }
-
-  void plotFace(string descriptor, int faceID) {
-    // Open plot file
-    std::ofstream file(descriptor + ".plt");
-
-    // Write to plot file
-    std::array<int, 5> pts{
-        face[faceID][0], face[faceID][1], face[faceID][2],
-        face[faceID][3], face[faceID][0],
+  // Write to plot file
+  for (int f = 0; f < c.nFaces; ++f) {
+    const std::array<int, 5> pts{
+        c.face[f][0], c.face[f][1], c.face[f][2], c.face[f][3], c.face[f][0],
     };
+
     for (auto &p : pts)
-      file << coord[p] << endl;
+      file << c.coord[p] << endl;
 
     file << "\n\n\n";
   }
 
-  void plotRay(string descriptor, const Ray &ray) {
-    // Open plot file
-    std::ofstream file(descriptor + ".plt", std::ios::app);
+  std::ofstream file1(descriptor + "_centers.plt");
 
-    file << ray.p << endl;
-    file << ray.p + ray.n << endl;
-    file << ray.p << endl;
-    file << endl;
+  // Write to plot file
+  for (int f = 0; f < c.nFaces; ++f) {
+    file1 << c.centers[f] << endl;
   }
+}
 
-  void plotPoint(string descriptor, const Point3 &p) {
-    // Open plot file
-    std::ofstream file(descriptor + ".plt");
-    file << p << endl;
+void plotFacesInList(const Cylinder &c, string descriptor,
+                     std::vector<int> &facesToPlot) {
+  // Open plot file
+  std::ofstream file(descriptor + ".plt");
+
+  // Write to plot file
+  for (int i = 0; i < facesToPlot.size(); ++i) {
+    const std::array<int, 5> pts{
+        c.face[facesToPlot[i]][0], c.face[facesToPlot[i]][1],
+        c.face[facesToPlot[i]][2], c.face[facesToPlot[i]][3],
+        c.face[facesToPlot[i]][0],
+    };
+
+    for (auto &p : pts)
+      file << c.coord[p] << endl;
+
+    file << "\n\n\n";
   }
-};
+}
+
+void plotFace(const Cylinder &c, string descriptor, int faceID) {
+  // Open plot file
+  std::ofstream file(descriptor + ".plt");
+
+  // Write to plot file
+  std::array<int, 5> pts{
+      c.face[faceID][0], c.face[faceID][1], c.face[faceID][2],
+      c.face[faceID][3], c.face[faceID][0],
+  };
+  for (auto &p : pts)
+    file << c.coord[p] << endl;
+
+  file << "\n\n\n";
+}
+
+void plotRay(string descriptor, const Ray &ray) {
+  // Open plot file
+  std::ofstream file(descriptor + ".plt", std::ios::app);
+
+  file << ray.p << endl;
+  file << ray.p + ray.n << endl;
+  file << ray.p << endl;
+  file << endl;
+}
+
+void plotPoint(string descriptor, const Point3 &p) {
+  // Open plot file
+  std::ofstream file(descriptor + ".plt");
+  file << p << endl;
+}

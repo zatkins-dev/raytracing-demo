@@ -12,17 +12,18 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <openacc.h>
 #include <optional>
 
 struct Vec3 {
   double x = 0., y = 0., z = 0.;
 
   template <class T> constexpr const Vec3 operator+(const T &w) const {
-    return {.x = x + w.x, .y = y + w.y, .z = z + w.z};
+    return {x + w.x, y + w.y, z + w.z};
   }
 
   constexpr const Vec3 operator*(double a) const {
-    return {.x = a * x, .y = a * y, .z = a * z};
+    return {a * x, a * y, a * z};
   }
 
   constexpr const Vec3 operator-() const { return *this * -1; }
@@ -37,24 +38,23 @@ struct Point3 {
   double x = 0., y = 0., z = 0.;
 
   template <class T> constexpr const Point3 operator+(const T &w) const {
-    return {.x = x + w.x, .y = y + w.y, .z = z + w.z};
+    return {x + w.x, y + w.y, z + w.z};
   }
 
   constexpr const Point3 operator*(double a) const {
-    return {.x = a * x, .y = a * y, .z = a * z};
+    return {a * x, a * y, a * z};
   }
 
   constexpr const Point3 operator-() const { return *this * -1; }
 
   constexpr const Vec3 operator-(const Point3 &v) const {
-    return {.x = x - v.x, .y = y - v.y, .z = z - v.z};
+    return {x - v.x, y - v.y, z - v.z};
   }
 
   template <class T> constexpr Point3 &operator+=(T v) {
     *this = *this + v;
     return *this;
   }
-
   constexpr Point3 &operator*=(double a) {
     *this = *this * a;
     return *this;
@@ -73,9 +73,9 @@ std::ostream &operator<<(std::ostream &os, const Point3 &v) {
 
 constexpr Vec3 cross(const Vec3 &v, const Vec3 &w) {
   return {
-      .x = v.y * w.z - v.z * w.y,
-      .y = v.z * w.x - v.x * w.z,
-      .z = v.x * w.y - v.y * w.x,
+      v.y * w.z - v.z * w.y,
+      v.z * w.x - v.x * w.z,
+      v.x * w.y - v.y * w.x,
   };
 }
 
@@ -87,15 +87,17 @@ constexpr double normsq(const Vec3 &v) { return dot(v, v); }
 
 constexpr Vec3 normalized(const Vec3 &v) { return (1. / sqrt(normsq(v))) * v; }
 
-struct Face {
-  std::array<Point3, 4> verts;
+class Face {
+public:
+  Point3 verts[4];
   Point3 c;
   Vec3 n;
   const Point3 &q1 = verts[0], &q2 = verts[1], &q3 = verts[2], &q4 = verts[3];
 
-  constexpr Face(std::array<Point3, 4> verts_, Vec3 n_) : verts(verts_), n(n_) {
-    for (auto &q : verts) {
-      c += q;
+  constexpr Face(const Point3 verts_[4], Vec3 n_) : n(n_) {
+    for (int i = 0; i < 4; i++) {
+      verts[i] = verts_[i];
+      c += verts[i];
     }
     c *= 0.25;
   }
@@ -106,24 +108,19 @@ struct Plane {
   Vec3 n;
 };
 
-struct Ray {
+class Ray {
+public:
   Point3 p;
   Vec3 n;
 
-  constexpr explicit Ray(const Point3 &p_, const Vec3 &n_)
-      : p(p_), n(normalized(n_)) {}
+  constexpr Ray(Point3 p_, Vec3 n_) : p(p_), n(normalized(n_)) {}
 
-  constexpr Ray(const Point3 &p1, const Point3 &p2)
-      : p(p1), n(normalized(p2 - p1)) {}
+  constexpr Ray(Point3 p1, Point3 p2) {
+
+    p = p1;
+    n = normalized(p2 - p1);
+  }
 };
-
-constexpr std::optional<Point3> operator&(const Ray &ray, const Plane &plane) {
-  auto l_dot_n = dot(ray.n, plane.n);
-  if (fabs(l_dot_n) < 1.e-10)
-    return {};
-  auto d = dot(plane.p - ray.p, plane.n) / l_dot_n;
-  return ray.p + d * ray.n;
-}
 
 /**
  * @brief Determines whether P is within the corner CAB
@@ -142,26 +139,8 @@ constexpr std::optional<Point3> operator&(const Ray &ray, const Plane &plane) {
  * @return true if dot(vAB x vAP, vCA x vAP) > 0
  **/
 constexpr bool insideCorner(const Point3 &P, const Point3 &C, const Point3 &A,
-                            const Point3 &B) {
-  const Vec3 vAP = P - A;
-  return dot(cross(B - A, vAP), cross(A - C, vAP)) >= 0;
-}
-
-//  ==
-//  ||
-//  ||  insideQuad: Given a quadrilateral as points in x,y,z arrays
-//  ||              determine if point P is inside the quadrilateral.
-//  ||
-//  ||              It is inside the quadrilateral if it is inside
-//  ||              each of its four corners.
-//  ||
-//  ==
-constexpr std::optional<Point3> operator&(const Point3 &p, const Face &face) {
-  const bool inside = insideCorner(p, face.q1, face.q4, face.q3) &&
-                      insideCorner(p, face.q2, face.q1, face.q4) &&
-                      insideCorner(p, face.q3, face.q2, face.q1) &&
-                      insideCorner(p, face.q4, face.q3, face.q2);
-  return inside ? std::optional(p) : std::nullopt;
+                            const Point3 &B) noexcept {
+  return dot(cross(B - A, P - A), cross(A - C, P - A)) >= 0;
 }
 
 //  ==
@@ -170,9 +149,14 @@ constexpr std::optional<Point3> operator&(const Point3 &p, const Face &face) {
 //  ||                intersect a face specified by four points Q0 - Q3.
 //  ||
 //  ==
-constexpr std::optional<Point3> operator&(const Ray &line, const Face &face) {
-  auto intersects = line & Plane{face.c, face.n};
-  if (!intersects)
-    return std::nullopt;
-  return intersects.value() & face;
+constexpr bool operator&(const Ray &ray, const Face &face) noexcept {
+  const auto l_dot_n = dot(ray.n, face.n);
+  if (fabs(l_dot_n) < 1.e-10)
+    return false;
+  const auto d = dot(face.c - ray.p, face.n) / l_dot_n;
+  Point3 p = ray.p + d * ray.n;
+  return insideCorner(p, face.q1, face.q4, face.q3) &&
+         insideCorner(p, face.q2, face.q1, face.q4) &&
+         insideCorner(p, face.q3, face.q2, face.q1) &&
+         insideCorner(p, face.q4, face.q3, face.q2);
 }

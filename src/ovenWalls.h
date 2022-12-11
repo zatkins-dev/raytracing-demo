@@ -19,11 +19,13 @@
 //  || ||
 //  ================================================================================
 
+#include <chrono>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <openacc.h>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -31,11 +33,11 @@
 #include "Cylinder.hpp"
 #include "geom.hpp"
 
-using std ::cout;
-using std ::endl;
-using std ::string;
-using std ::stringstream;
-using std ::vector;
+using std::cout;
+using std::endl;
+using std::string;
+using std::stringstream;
+using std::vector;
 
 typedef vector<double> VD;
 typedef vector<vector<double>> VDD;
@@ -50,3 +52,55 @@ void FatalError(string msg) {
   cout << " " << endl;
   exit(0);
 }
+
+class timingInfo {
+public:
+  // Name of the intenty for which timing is desired
+  struct time_result_t {
+    double wall_s = 0;
+    double cpu_s = 0;
+  };
+
+  string name = "default";
+
+  // Two methods of recording time:
+
+  std::chrono::steady_clock::time_point startSeconds, endSeconds; // (1)
+  struct timespec startHighResTime, endHighResTime;               // (2)
+
+  timingInfo() = default;
+
+  timingInfo(string _name) : name(_name) {}
+
+  void start() {
+    // Record start time using two methods
+
+    startSeconds = std::chrono::steady_clock::now();            // (1)
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &startHighResTime); // (2)
+  }
+
+  time_result_t finish() {
+
+    // Record finish time using two methods
+
+    endSeconds = std::chrono::steady_clock::now();            // (1)
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &endHighResTime); // (2)
+
+    // Compute elapsed time
+    std::chrono::duration<double> wall = endSeconds - startSeconds;
+    double elapsedWall = wall.count();
+    double elapsedCPU =
+        timespecsToDuration(startHighResTime, endHighResTime).count(); // (2)
+
+    return time_result_t{.wall_s = elapsedWall, .cpu_s = elapsedCPU};
+  }
+
+private:
+  std::chrono::duration<double> timespecsToDuration(struct timespec ts0,
+                                                    struct timespec ts1) {
+    using std::chrono::nanoseconds;
+    using std::chrono::seconds;
+    return seconds{ts1.tv_sec - ts0.tv_sec} +
+           nanoseconds{ts1.tv_nsec - ts0.tv_nsec};
+  }
+};

@@ -28,16 +28,14 @@
 
 # Default compiler is Intel MPI compiler
 
-CXX      := mpicxx
+CXX      := pgc++
 EXE		 := bin/raytracing
-CXXFLAGS := -g -O0 -std=c++2a
+# CXXFLAGS := -g -O3 -std=c++17 -Minit-msg -Minfo=accel -Minline -finline-functions -Mipa=acc
+CXXFLAGS := -g -O3 -acc -std=c++23 -Minit-msg -Minfo=accel -Minline -finline-functions
 SOURCES  := $(addprefix src/,ovenWalls.cpp Cylinder.hpp geom.hpp arrayUtils.hpp)
-CPPOBJECTS  := $(addprefix bin/,$(basename $(SOURCES:.cpp=.o)))
-HPPOBJECTS  := $(addprefix bin/,$(basename $(SOURCES:.hpp=.o)))
 # -----------------------------------------------------
 # Make esPIC
 # -----------------------------------------------------
-
 
 $(EXE): src/ovenWalls.cpp $(SOURCES)
 	@mkdir -p bin
@@ -47,7 +45,7 @@ $(EXE): src/ovenWalls.cpp $(SOURCES)
 
 .PHONY: clean
 clean: clean-artifacts
-	rm -f $(EXE)
+	rm -f $(EXE) *.o
 
 .PHONY: clean-artifacts
 clean-artifacts:
