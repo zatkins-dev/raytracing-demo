@@ -92,7 +92,6 @@ constexpr double norm(const Vec3 &v) { return std::sqrt(normsq(v)); }
 constexpr Vec3 normalized(const Vec3 &v) { return (1. / norm(v)) * v; }
 
 struct Face {
-public:
   Point3 q1, q2, q3, q4;
   Point3 c;
   Vec3 n;
@@ -107,22 +106,13 @@ public:
   constexpr const Face operator-() const { return {q1, q2, q3, q4, -n}; }
 };
 
-struct Plane {
-  Point3 p;
-  Vec3 n;
-};
-
-class Ray {
-public:
+struct Ray {
   Point3 p;
   Vec3 n;
 
-  constexpr Ray(Point3 p_, Vec3 n_) : p(p_), n(normalized(n_)) {}
+  constexpr Ray(Point3 p_, Vec3 n_) : p(p_), n(n_) {}
 
-  constexpr Ray(Point3 p1, Point3 p2) {
-    p = p1;
-    n = p2 - p1;
-  }
+  constexpr Ray(Point3 p1, Point3 p2) : p(p1), n(p2 - p1) {}
 };
 
 /**
