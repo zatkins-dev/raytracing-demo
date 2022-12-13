@@ -16,133 +16,74 @@ using std::string;
 
 class Cylinder {
 public:
-  int nCellh;      // Number of cells in the height direction
-  int nCellc;      // Number of cells in the circular direction
-  int nRealh;      // Number of nodes in the height direction
-  int nRealc;      // Number of nodes in the circular direction
-  int nField;      // Number of nodes
-  double dtheta;   // Angular spacing of nodes, in degrees
-  double dz;       // Axial spacing of nodes
-  double radius;   // Cylinder radius
-  double length;   // Cylinder length
-  int **face;      // Faces:  face[f][i] gives the nodes of face f
-  int nFaces;      // Number of faces
-  Point3 *coord;   // Vertices
-  Vec3 *normals;   // Face normals
-  Point3 *centers; // Face centers
+  const int nCellh;    // Number of cells in the height direction
+  const int nCellc;    // Number of cells in the circular direction
+  const int nRealh;    // Number of nodes in the height direction
+  const int nRealc;    // Number of nodes in the circular direction
+  const int nFaces;    // Number of faces
+  const double radius; // Cylinder radius
+  const double height; // Cylinder height
+  const Mode mode;
+  Face *faces; // Faces: faces[f] is a Face containing the vertices and normal
 
-  Cylinder(int _nCellh, int _nCellc, double _radius, double _length,
-           int Out1In2)
-      : nCellh(_nCellh), nCellc(_nCellc), radius(_radius), length(_length) {
-    // Store user inputs
-    nRealh = nCellh + 1;
-    nRealc = nCellc;
-
-    nField = nRealh * nRealc;
-    nFaces = nCellh * nCellc;
-
-    dtheta = 360. / nCellc;
-    dz = length / nCellh;
-
+  Cylinder(int _nCellh, int _nCellc, double _radius, double _length, bool out,
+           Mode _mode)
+      : nCellh(_nCellh), nCellc(_nCellc), radius(_radius), height(_length),
+        nRealh(_nCellh + 1), nRealc(_nCellc), nFaces(_nCellc * _nCellh),
+        mode(_mode) {
     // Form mesh
+    faces = new Face[nFaces];
 
-    coord = array<Point3>(nField);
-    face = array2d<int>(nFaces, 4);
-    normals = array<Vec3>(nFaces);
-    centers = array<Point3>(nFaces);
-
-    int faceCount = 0;
-
-    for (int j = 1; j <= nRealc; ++j) {
-      for (int i = 1; i <= nRealh; ++i) {
-        int p = pid(i, j);
-
-        double theta = dtheta * j;
-        double zval = dz * (i - 1);
-
-        coord[p] = {
-            radius * std::cos(theta * M_PI / 180.),
-            radius * std::sin(theta * M_PI / 180.),
-            zval,
-        };
-
+    double dtheta = 360. / nCellc;
+    double dz = height / nCellh;
+    auto compute_coord = [=](int i, int j) -> Point3 {
+      return {
+          _radius * std::cos(dtheta * j * M_PI / 180.),
+          _radius * std::sin(dtheta * j * M_PI / 180.),
+          dz * i,
+      };
+    };
+    for (int j = 0; j < _nCellc; ++j) {
+      for (int i = 0; i < _nCellh; ++i) {
         // Form face, i.e., for this face number (which happens to be p)
         // collect the pids of the 4 nodes that comprise this face.
+        const Point3 q1 = compute_coord(i, j), q2 = compute_coord(i + 1, j),
+                     q3 = compute_coord(i + 1, (j + 1) % nRealc),
+                     q4 = compute_coord(i, (j + 1) % nRealc);
 
-        const int point[4]{
-            pid(i, j),
-            pid(i + 1, j),
-            j == nRealc ? pid(i + 1, 1) : pid(i + 1, j % nRealc + 1),
-            j == nRealc ? pid(i, 1) : pid(i, j % nRealc + 1),
-        };
-
-        // Correct point for when we have wrapped completely around the
-        // circle
-
-        // Store the point values in this face, p (but not for the last point in
-        // an i-row
-
-        if (i < nRealh) {
-          for (int k = 0; k < 4; ++k)
-            face[faceCount][k] = point[k];
-          faceCount++;
-        }
+        const Point3 avg = 0.25 * (q1 + q2 + q3 + q4);
+        const double mag = sqrt(avg.x * avg.x + avg.y * avg.y);
+        const Vec3 normal = (2 * out - 1) * Vec3{avg.x / mag, avg.y / mag, 0.};
+        faces[i + j * nCellh] = Face(q1, q2, q3, q4, normal);
       }
     }
-
-    assert(faceCount == nFaces);
-
-    // Compute normals for each face
-
-    for (int f = 0; f < nFaces; ++f) {
-      Point3 avg;
-      for (int k = 0; k < 4; ++k) {
-        avg += coord[face[f][k]];
-      }
-      avg *= 0.25;
-
-      double mag = sqrt(avg.x * avg.x + avg.y * avg.y);
-
-      normals[f] = {
-          avg.x / mag,
-          avg.y / mag,
-          0.,
-      };
-
-      centers[f] = avg;
-
-      if (Out1In2 == 2)
-        normals[f] *= -1.;
+    if (mode == Mode::gpu_acc) {
+#pragma acc enter data copyin(this [0:1])
+      const int n = nFaces;
+#pragma acc enter data copyin(faces [0:n])
     }
-#pragma acc enter data copyin(this[:1])
-#pragma acc enter data copyin(                                                 \
-    coord[:nField], face[:nFaces][:4], normals[:nFaces], centers[:nFaces])
   }
+
+  ~Cylinder() { delete[] faces; }
 
 #pragma acc routine seq
   constexpr auto operator&(const Ray &ray) const noexcept {
+    for (int f = 0; f < nFaces; f++) { // Check for front-face intersections
+      auto [intersects, p] = ray & faces[f];
+      if (intersects)
+        return std::make_pair(f, p);
+    }
     for (int f = 0; f < nFaces; f++) {
-      if (normsq(centers[f] - ray.p) < 1e-12)
-        continue;
-
-      // Vertices of potential blocker
-      const Point3 c[]{
-          coord[face[f][0]],
-          coord[face[f][1]],
-          coord[face[f][2]],
-          coord[face[f][3]],
-      };
-      const Face t_face{c, normals[f]};
-
-      // ignore the source face
-      const auto &[intersects, p] = ray & t_face;
+      // Check for back-face intersections ONLY IF no front-face intersections
+      auto [intersects, p] = ray & -faces[f];
       if (intersects)
         return std::make_pair(f, p);
     }
     return std::make_pair(-1, Point3{});
   }
 
-  int pid(int i, int j) { return (i - 1 + (j - 1) * nRealh); }
+#pragma acc routine seq
+  int pid(int i, int j) { return (i + j * nRealh); }
 };
 
 void plot(const Cylinder &c, string descriptor) {
@@ -151,21 +92,13 @@ void plot(const Cylinder &c, string descriptor) {
 
   // Write to plot file
   for (int f = 0; f < c.nFaces; ++f) {
-    const std::array<int, 5> pts{
-        c.face[f][0], c.face[f][1], c.face[f][2], c.face[f][3], c.face[f][0],
-    };
-
-    for (auto &p : pts)
-      file << c.coord[p] << endl;
-
+    const auto &fc = c.faces[f];
+    file << fc.q1 << '\n';
+    file << fc.q2 << '\n';
+    file << fc.q3 << '\n';
+    file << fc.q4 << '\n';
+    file << fc.q1 << '\n';
     file << "\n\n\n";
-  }
-
-  std::ofstream file1(descriptor + "_centers.plt");
-
-  // Write to plot file
-  for (int f = 0; f < c.nFaces; ++f) {
-    file1 << c.centers[f] << endl;
   }
 }
 
@@ -176,15 +109,12 @@ void plotFacesInList(const Cylinder &c, string descriptor,
 
   // Write to plot file
   for (int i = 0; i < facesToPlot.size(); ++i) {
-    const std::array<int, 5> pts{
-        c.face[facesToPlot[i]][0], c.face[facesToPlot[i]][1],
-        c.face[facesToPlot[i]][2], c.face[facesToPlot[i]][3],
-        c.face[facesToPlot[i]][0],
-    };
-
-    for (auto &p : pts)
-      file << c.coord[p] << endl;
-
+    const auto &fc = c.faces[facesToPlot[i]];
+    file << fc.q1 << '\n';
+    file << fc.q2 << '\n';
+    file << fc.q3 << '\n';
+    file << fc.q4 << '\n';
+    file << fc.q1 << '\n';
     file << "\n\n\n";
   }
 }
@@ -192,15 +122,13 @@ void plotFacesInList(const Cylinder &c, string descriptor,
 void plotFace(const Cylinder &c, string descriptor, int faceID) {
   // Open plot file
   std::ofstream file(descriptor + ".plt");
-
+  const auto &fc = c.faces[faceID];
   // Write to plot file
-  std::array<int, 5> pts{
-      c.face[faceID][0], c.face[faceID][1], c.face[faceID][2],
-      c.face[faceID][3], c.face[faceID][0],
-  };
-  for (auto &p : pts)
-    file << c.coord[p] << endl;
-
+  file << fc.q1 << '\n';
+  file << fc.q2 << '\n';
+  file << fc.q3 << '\n';
+  file << fc.q4 << '\n';
+  file << fc.q1 << '\n';
   file << "\n\n\n";
 }
 

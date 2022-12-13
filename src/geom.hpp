@@ -71,7 +71,7 @@ std::ostream &operator<<(std::ostream &os, const Point3 &v) {
   return os << v.x << " " << v.y << " " << v.z;
 }
 
-constexpr Vec3 cross(const Vec3 &v, const Vec3 &w) {
+constexpr Vec3 cross(const Vec3 &v, const Vec3 &w) { // 9
   return {
       v.y * w.z - v.z * w.y,
       v.z * w.x - v.x * w.z,
@@ -79,11 +79,11 @@ constexpr Vec3 cross(const Vec3 &v, const Vec3 &w) {
   };
 }
 
-constexpr double dot(const Vec3 &v, const Vec3 &w) {
+constexpr double dot(const Vec3 &v, const Vec3 &w) { // 5
   return v.x * w.x + v.y * w.y + v.z * w.z;
 }
 
-constexpr double normsq(const Vec3 &v) {
+constexpr double normsq(const Vec3 &v) { // 5
   return v.x * v.x + v.y * v.y + v.z * v.z;
 }
 
@@ -91,20 +91,20 @@ constexpr double norm(const Vec3 &v) { return std::sqrt(normsq(v)); }
 
 constexpr Vec3 normalized(const Vec3 &v) { return (1. / norm(v)) * v; }
 
-class Face {
+struct Face {
 public:
-  Point3 verts[4];
+  Point3 q1, q2, q3, q4;
   Point3 c;
   Vec3 n;
-  const Point3 &q1 = verts[0], &q2 = verts[1], &q3 = verts[2], &q4 = verts[3];
 
-  constexpr Face(const Point3 verts_[4], Vec3 n_) : n(n_) {
-    for (int i = 0; i < 4; i++) {
-      verts[i] = verts_[i];
-      c += verts[i];
-    }
-    c *= 0.25;
+  constexpr Face() : n({1, 0, 0}) {}
+
+  constexpr Face(Point3 q1_, Point3 q2_, Point3 q3_, Point3 q4_, Vec3 n_)
+      : n(n_), q1(q1_), q2(q2_), q3(q3_), q4(q4_) {
+    c = 0.25 * (q1 + q2 + q3 + q4);
   }
+
+  constexpr const Face operator-() const { return {q1, q2, q3, q4, -n}; }
 };
 
 struct Plane {
@@ -143,7 +143,7 @@ public:
  **/
 #pragma acc routine seq
 constexpr bool insideCorner(const Point3 &P, const Point3 &C, const Point3 &A,
-                            const Point3 &B) noexcept {
+                            const Point3 &B) noexcept { // 35
   return dot(cross(B - A, P - A), cross(A - C, P - A)) >= 0;
 }
 
@@ -171,19 +171,13 @@ constexpr bool onFace(const Point3 &P, const Face &face) {
          insideCorner(P, face.q3, face.q2, face.q1) &&
          insideCorner(P, face.q4, face.q3, face.q2);
 }
-//  ==
-//  ||
-//  ||  LineHitsFace: Returns 1 if the line specified by a point L0 and vector L
-//  ||                intersect a face specified by four points Q0 - Q3.
-//  ||
-//  ==
+
 #pragma acc routine seq
-constexpr auto operator&(const Ray &ray, const Face &face) noexcept {
-  const auto l_dot_n = dot(ray.n, face.n);
-  if (l_dot_n > 1.e-14)
+constexpr auto operator&(const Ray &ray, const Face &face) noexcept { // 136
+  const auto l_dot_n = dot(ray.n, face.n);                            // 5
+  if (l_dot_n > 1.e-12)
     return std::make_pair(false, Point3{});
-  const auto d = dot(face.c - ray.p, face.n) / l_dot_n;
-  const Point3 p = ray.p + d * ray.n;
-  return std::make_pair(onFace(p, face), p);
-  // return onVertex(p, face) || onEdge(p, face) || onFace(p, face);
+  const auto d = dot(face.c - ray.p, face.n) / l_dot_n; // 9
+  const Point3 p = ray.p + d * ray.n;                   // 6
+  return std::make_pair(onFace(p, face), p);            // 116
 }

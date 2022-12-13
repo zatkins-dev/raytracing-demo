@@ -25,7 +25,7 @@ template <class T> void freeArray(T **array) {
 // Double 2D Array
 // -------------------------------------------
 template <class T>
-T **array2d(const int nRows, const int nCols, const T &init = T(0)) {
+T **array2d(const int nRows, const int nCols, const T &init = T{}) {
   T *myArray;
   myArray = new T[nRows * nCols];
 

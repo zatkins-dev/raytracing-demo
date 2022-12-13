@@ -31,6 +31,37 @@
 #include <string>
 #include <vector>
 
+enum class Mode {
+  cpu_serial,
+  cpu_omp,
+  gpu_acc,
+};
+
+inline Mode str2mode(std::string mode) {
+  if (mode == "gpu" || mode == "gpu_acc") {
+    return Mode::gpu_acc;
+  }
+  if (mode == "cpu" || mode == "cpu_serial") {
+    return Mode::cpu_serial;
+  }
+  if (mode == "cpu_omp") {
+    return Mode::cpu_omp;
+  }
+  return Mode::gpu_acc;
+}
+
+inline std::string mode2str(Mode mode) {
+  switch (mode) {
+  case Mode::cpu_serial:
+    return "CPU - Serial";
+  case Mode::cpu_omp:
+    return "CPU - OpenMP";
+  case Mode::gpu_acc:
+  default:
+    return "GPU - OpenACC";
+  }
+}
+
 #include "Cylinder.hpp"
 #include "geom.hpp"
 
@@ -80,7 +111,7 @@ public:
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &startHighResTime); // (2)
   }
 
-  time_result_t finish() {
+  time_result_t stop() {
 
     // Record finish time using two methods
 
