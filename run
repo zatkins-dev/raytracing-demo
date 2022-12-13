@@ -9,6 +9,12 @@ echo "nCellh_o 7 -nCellc_o 19 nCellh_i 7 nCellc_i 19"
 ./bin/raytracing -q -nCellh_o 7 -nCellc_o 19 -nCellh_i 7 -nCellc_i 19 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_omp
 ./bin/raytracing -q -nCellh_o 7 -nCellc_o 19 -nCellh_i 7 -nCellc_i 19 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_serial
 echo ""
+echo "nCellh_o 25 nCellc_o 25 nCellh_i 25 nCellc_i 25"
+./bin/raytracing -q -nCellh_o 25 -nCellc_o 25 -nCellh_i 25 -nCellc_i 25 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode gpu > /dev/null
+./bin/raytracing -q -nCellh_o 25 -nCellc_o 25 -nCellh_i 25 -nCellc_i 25 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode gpu
+./bin/raytracing -q -nCellh_o 25 -nCellc_o 25 -nCellh_i 25 -nCellc_i 25 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_omp
+./bin/raytracing -q -nCellh_o 25 -nCellc_o 25 -nCellh_i 25 -nCellc_i 25 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_serial
+echo ""
 echo "nCellh_o 50 nCellc_o 50 nCellh_i 50 nCellc_i 50"
 ./bin/raytracing -q -nCellh_o 50 -nCellc_o 50 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode gpu > /dev/null
 ./bin/raytracing -q -nCellh_o 50 -nCellc_o 50 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode gpu
@@ -25,13 +31,13 @@ echo "nCellh_o 50 nCellc_o 150 nCellh_i 50 nCellc_i 50"
 ./bin/raytracing -q -nCellh_o 50 -nCellc_o 150 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode gpu > /dev/null
 ./bin/raytracing -q -nCellh_o 50 -nCellc_o 150 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode gpu
 ./bin/raytracing -q -nCellh_o 50 -nCellc_o 150 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_omp
-./bin/raytracing -q -nCellh_o 50 -nCellc_o 150 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_serial
+# ./bin/raytracing -q -nCellh_o 50 -nCellc_o 150 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_serial
 echo ""
 echo "nCellh_o 100 nCellc_o 100 nCellh_i 50 nCellc_i 50"
 ./bin/raytracing -q -nCellh_o 100 -nCellc_o 100 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode gpu > /dev/null
 ./bin/raytracing -q -nCellh_o 100 -nCellc_o 100 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode gpu
 ./bin/raytracing -q -nCellh_o 100 -nCellc_o 100 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_omp
-./bin/raytracing -q -nCellh_o 100 -nCellc_o 100 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_serial
+# ./bin/raytracing -q -nCellh_o 100 -nCellc_o 100 -nCellh_i 50 -nCellc_i 50 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode cpu_serial
 echo ""
 echo "nCellh_o 50 nCellc_o 50 nCellh_i 50 nCellc_i 150"
 ./bin/raytracing -q -nCellh_o 50 -nCellc_o 50 -nCellh_i 50 -nCellc_i 150 -r_o 10. -r_i 5. -h_o 5. -h_i 5. -mode gpu > /dev/null
