@@ -90,8 +90,8 @@ int main(int argc, char *argv[]) {
   timingInfo timer;
   timer.start();
 
-  const Cylinder CylA(outer_nCellh, outer_nCellc, outer_r, outer_h, 2, mode);
-  const Cylinder CylB(inner_nCellh, inner_nCellc, inner_r, inner_h, 1, mode);
+  const Cylinder CylA(outer_nCellh, outer_nCellc, outer_r, outer_h, false);
+  const Cylinder CylB(inner_nCellh, inner_nCellc, inner_r, inner_h, true);
   auto intersections = array2d<int>(CylA.nFaces, CylA.nFaces);
   auto points = array2d<Point3>(CylA.nFaces, CylA.nFaces);
   const int nFacesA = CylA.nFaces;
@@ -128,9 +128,12 @@ int main(int argc, char *argv[]) {
 
   case Mode::gpu_acc: // Test GPU Performance with OpenACC
   default: {
-#pragma acc parallel loop independent collapse(2) gang vector copyout(         \
-    intersections [0:CylA.nFaces] [0:CylA.nFaces]),                            \
-    copyout(points [0:CylA.nFaces] [0:CylA.nFaces])
+    CylA.todev();
+    CylB.todev();
+#pragma acc parallel loop independent collapse(2) gang vector,                 \
+    present(CylA, CylB),                                                       \
+    copyout(intersections [0:CylA.nFaces] [0:CylA.nFaces]),                    \
+    copyout(points [0:CylA.nFaces] [0:CylA.nFaces]),
     for (int src_face = 0; src_face < nFacesA; src_face++) {
       for (int dst_face = 0; dst_face < nFacesA; dst_face++) {
         // Ray to target

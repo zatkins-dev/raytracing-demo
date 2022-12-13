@@ -9,6 +9,7 @@
 #include <vector>
 
 using std::cout, std::endl;
+using std::sin, std::cos;
 using std::string;
 
 #include "arrayUtils.hpp"
@@ -16,55 +17,44 @@ using std::string;
 
 class Cylinder {
 public:
-  const int nCellh;    // Number of cells in the height direction
-  const int nCellc;    // Number of cells in the circular direction
-  const int nRealh;    // Number of nodes in the height direction
-  const int nRealc;    // Number of nodes in the circular direction
-  const int nFaces;    // Number of faces
-  const double radius; // Cylinder radius
-  const double height; // Cylinder height
-  const Mode mode;
+  const int nFaces; // Number of faces
+  const double r;   // Cylinder radius
+  const double h;   // Cylinder height
   Face *faces; // Faces: faces[f] is a Face containing the vertices and normal
 
-  Cylinder(int _nCellh, int _nCellc, double _radius, double _length, bool out,
-           Mode _mode)
-      : nCellh(_nCellh), nCellc(_nCellc), radius(_radius), height(_length),
-        nRealh(_nCellh + 1), nRealc(_nCellc), nFaces(_nCellc * _nCellh),
-        mode(_mode) {
-    // Form mesh
+  Cylinder(int nCellh, int nCellc, double radius, double height, bool outward_n)
+      : r(radius), h(height), nFaces(nCellc * nCellh) {
     faces = new Face[nFaces];
-
-    double dtheta = 360. / nCellc;
-    double dz = height / nCellh;
-    auto compute_coord = [=](int i, int j) -> Point3 {
-      return {
-          _radius * std::cos(dtheta * j * M_PI / 180.),
-          _radius * std::sin(dtheta * j * M_PI / 180.),
-          dz * i,
-      };
-    };
-    for (int j = 0; j < _nCellc; ++j) {
-      for (int i = 0; i < _nCellh; ++i) {
-        // Form face, i.e., for this face number (which happens to be p)
-        // collect the pids of the 4 nodes that comprise this face.
-        const Point3 q1 = compute_coord(i, j), q2 = compute_coord(i + 1, j),
-                     q3 = compute_coord(i + 1, (j + 1) % nRealc),
-                     q4 = compute_coord(i, (j + 1) % nRealc);
+    const double dt = 2. * M_PI / nCellc;
+    const double dz = h / nCellh;
+    for (int j = 0; j < nCellc; ++j) {
+      for (int i = 0; i < nCellh; ++i) {
+        const int jp1 = (j + 1) % nCellc;
+        const Point3 q1 = {r * cos(dt * j), r * sin(dt * j), dz * i},
+                     q2 = {r * cos(dt * j), r * sin(dt * j), dz * (i + 1)},
+                     q3 = {r * cos(dt * jp1), r * sin(dt * jp1), dz * (i + 1)},
+                     q4 = {r * cos(dt * jp1), r * sin(dt * jp1), dz * i};
 
         const Point3 avg = 0.25 * (q1 + q2 + q3 + q4);
         const double mag = sqrt(avg.x * avg.x + avg.y * avg.y);
-        const Vec3 normal = (2 * out - 1) * Vec3{avg.x / mag, avg.y / mag, 0.};
+        const int scale_normal = (2 * outward_n - 1);
+        const Vec3 normal = scale_normal * Vec3{avg.x / mag, avg.y / mag, 0.};
         faces[i + j * nCellh] = Face(q1, q2, q3, q4, normal);
       }
-    }
-    if (mode == Mode::gpu_acc) {
-#pragma acc enter data copyin(this [0:1])
-      const int n = nFaces;
-#pragma acc enter data copyin(faces [0:n])
     }
   }
 
   ~Cylinder() { delete[] faces; }
+
+  inline void todev() const {
+#pragma acc enter data copyin(this [0:1])
+#pragma acc enter data copyin(faces [0:nFaces])
+  }
+
+  inline void fromdev() {
+#pragma acc exit data copyout(faces [0:nFaces])
+#pragma acc exit data copyout(this [0:1])
+  }
 
 #pragma acc routine seq
   constexpr auto operator&(const Ray &ray) const noexcept {
@@ -81,9 +71,6 @@ public:
     }
     return std::make_pair(-1, Point3{});
   }
-
-#pragma acc routine seq
-  int pid(int i, int j) { return (i + j * nRealh); }
 };
 
 void plot(const Cylinder &c, string descriptor) {
