@@ -2,7 +2,7 @@
 
 CXX      := pgc++
 EXE		 := bin/raytracing
-CXXFLAGS := -g -fast -mp -tp=zen3 -acc=multicore -acc=gpu -std=c++23 -Minit-msg -Minfo=accel -Minline -finline-functions -Midiom -Munroll -gpu=fastmath
+CXXFLAGS := -g -fast -fastsse -O3 -mp=multicore -acc=gpu -std=c++23 -Minit-msg -Minfo=accel -Minline -finline-functions -Midiom -Munroll -mavx2 -mcmodel=medium -gpu=fastmath -gpu=nvlamath -gpu=fma -nostdpar
 SOURCES  := $(addprefix src/,ovenWalls.cpp Cylinder.hpp geom.hpp arrayUtils.hpp ovenWalls.h)
 # -----------------------------------------------------
 # Make esPIC
