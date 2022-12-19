@@ -9,5 +9,5 @@ We compute collisions with the inner, blocking cylinder.
 - [NVIDIA HPC SDK 22.11](https://developer.nvidia.com/nvidia-hpc-sdk-downloads)
 
 ## Running
-The [run](scripts/run) script will run a full suite of tests.
+The [run](run) script will run a full suite of tests.
 If you would prefer to run a single test, use the command line options.
